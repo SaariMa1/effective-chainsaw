@@ -313,7 +313,21 @@ eaps %>%
 eaps %>%
   count(newcomer_ind,dis_ind,youth_higher_ind,francophoneind,odsp_ind,indigenous_ind) %>%
   filter(n!=11486) %>%
-  arrange(desc(n)) 
+  arrange(desc(n)) %>%
+  mutate(pct=n/sum(n)) %>%
+  filter(pct>0.01) 
+
+
+complex_client <- c("newcome_ind","dis_ind","dis_ind + youth_higher_ind","odsp_ind","odsp_ind + youth_higher_ind","youth_higher_ind","newcome_ind + dis_ind", "francophone","indigenous_ind","indigenous_ind + dis_ind","other (26 other combinations)")
+
+pct_complex_client <- c(0.42,0.17,0.093,0.089,0.40,0.27,0.25,0.24,0.021,0.020,0.071)
+
+
+
+TEST<-data.frame(complex_client,pct_complex_client)
+
+TEST %>%
+  ggplot(aes(reorder(complex_client,pct_complex_client),pct_complex_client))+geom_col()+coord_flip()
 
 
 
