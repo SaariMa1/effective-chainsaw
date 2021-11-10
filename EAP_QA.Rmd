@@ -293,6 +293,9 @@ Yes, it does.
 
 ```{r}
 
+#### Mark is playing in the sandbox - "don't eat the sand!"
+
+
 eaps %>%
   filter(!is.na(enddate)) %>%
   count(closure_reason) %>%
