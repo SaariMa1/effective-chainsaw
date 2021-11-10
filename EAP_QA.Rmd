@@ -1,0 +1,325 @@
+---
+title: "EAP Analysis Quality Assurance (QA)"
+description: |
+  Use this script to conduct quality assurance (QA) on Exploring Integrated Employment Service (IES) Employment Action Plan (EAP) data.
+author:
+  - name: Analytics Unit | Finance, Analysis and Systems Support Branch (FASSB) 
+    url: http://intra.infogo.gov.on.ca/infogo/home.html#orgProfile/113819/en
+    affiliation: Employment and Training Division (ETD) | Ministry of Labour, Training and Skills Development (MLTSD)
+    affiliation_url: 
+date: "`r format(Sys.Date(), '%B %Y')`"
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "output") })
+output: 
+  distill::distill_article:
+    toc: TRUE
+    code_folding: TRUE
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, cache=FALSE, results='hide', message=FALSE, warning=FALSE}
+
+# Load libraries
+
+require(knitr)
+require(tidyverse)
+require(odbc)
+require(dbplyr)
+require(rstudioapi)
+require(here)
+require(janitor)
+require(lubridate)
+
+
+# Set parameters
+
+opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+
+
+# Import data
+
+eaps <- read_rds("O:/Analytics Unit/Projects/EST/Employment Action Plan/data/eaps.rds") # All EAPs
+
+```
+
+
+# Quality Assurance
+
+The purpose of this script is to run basic tests to assess whether the data is providing expected results.  
+
+
+### Closures before starts
+
+Count the number of EAPs with an `enddate` before `startdate`. The expectation is that there should be no TRUE values, i.e. all values should be either FALSE or NA.
+
+```{r}
+
+eaps %>%
+  count(enddate < startdate)
+
+```
+
+There are no closures before starts (likely because enddate is system generated).
+
+
+### EAP Outcome before starts
+
+The `eapoutcomedate` field is associated with the EAP Outcome point, otherwise known as "client served", which is achieved when the agreed upon pre-employment services are completed. The expectation is is that there should be no TRUE values, i.e. all values should be either FALSE or NA. 
+
+```{r}
+
+eaps %>%
+  filter(!is.na(eapoutcomedate)) %>%
+  count(eapoutcomedate < startdate) %>%
+  mutate(pct = n / sum(n))
+
+```
+
+Not good, 172 or 2.4%, as of Nov. 9, 2021, EAPs have an `eapoutcomedate` that is before the EAP `startdate`. This is likely due to the `eapoutcomedate` field being manually entered, which increases the risk of data entry error.
+
+There is an option to export the details:
+
+```{r}
+
+out_start <- eaps %>%
+  filter(eapoutcomedate < startdate) %>%
+  arrange(eapoutcomedate)
+
+```
+
+
+Perhaps this was due to a learning curve during the initial period of IES. Or perhaps this is occurring in some catchment areas more than others?  
+
+Are there any trends among EST catchment areas, or time?
+
+First, the breakdown by catchment area.
+
+```{r}
+
+eaps %>%
+  filter(!is.na(eapoutcomedate)) %>%
+  count(est_catchment_area, eapoutcomedate < startdate) %>%
+  group_by(est_catchment_area) %>%
+  mutate(pct = n / sum(n))
+
+```
+
+A line chart of catchment area, over time.
+
+```{r}
+
+eaps %>%
+  filter(eapoutcomedate < startdate,
+         eapoutcomedate > "01/01/2021") %>%
+  count(est_catchment_area, start_week) %>%
+  ggplot(aes(start_week,
+             n,
+             colour = est_catchment_area))  +
+  labs(title = "Occurances of EAP Outcome Date Before Start Date",
+       subtitle = "By week and EST catchment area",
+       x = "Start Date",
+       y = "Number of EAPs",
+       caption = "Analytics Unit | FASSB",
+       colour = "") +
+  ylim(0,6) +
+  geom_line(size = 1.1,
+            alpha = 0.9) +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+
+Not really... it doesn't seem like a problem that is isolated to any one of the catchment areas. It also doesn't look like it was only a problem early on. It has been occurring - in fluctuating degrees - since program inception to the present.
+
+
+### Starts out of range
+
+Are there any EAP `startdate` values before the program start date of January 1, 2021? Or after the current date? This should be impossible and the expectation is is that there should be no TRUE values, i.e. all values should be  FALSE.
+
+```{r}
+
+eaps %>%
+  count(startdate < "01/01/2021" | startdate > Sys.Date())
+
+```
+
+None - likely because `startdate` is system generated.
+
+
+### Closures out of range
+
+Are there any EAP `enddate` values before the program start date of January 1, 2021? Or after the current date? This should be impossible and the expectation is is that there should be no TRUE values, i.e. all values should be FALSE or NA.
+
+```{r}
+
+eaps %>%
+  count(enddate < "01/01/2021" | enddate > Sys.Date())
+
+```
+
+None - likely because enddate is system generated.
+
+
+### EAP Outcome before possible range
+
+Are there any EAP `enddate` values before the program start date of January 1, 2021? Or after the current date? This should be impossible and the expectation is is that there should be no TRUE values, i.e. all values should be FALSE or NA.
+
+```{r}
+
+eaps %>%
+  count(eapoutcomedate < "2021/01/01" | eapoutcomedate > Sys.Date())
+
+```
+
+None - that's a good thing. This date is manually entered, so the opportunity for error exists. But at least it is not happening to such a degree where the dates are before program inception or in the future.
+
+
+### Closure Reason
+
+Do the EAPs with a closure reason of "Referral to Employment Focused Training" have a corresponding plan item under the "Skills Development - Ministry Delivered Programs" (`sub_SDM`) sub-gaol. The expectation is that an EAP with this closure reason would have at least one plan item under this sub-goal.
+
+```{r}
+
+eaps %>%
+  filter(closure_reason == "Referral to Employment Focused Training") %>%
+  count(sub_SDM) %>%
+  mutate(pct = n / sum(n))
+
+```
+
+
+Option to view cases where there were no plan items under the "Skills Development - Ministry Delivered Programs" (`sub_SDM`) sub-gaol.
+
+```{r}
+
+eaps %>%
+  filter(closure_reason == "Referral to Employment Focused Training",
+         is.na(sub_SDM)) %>%
+  view()
+
+```
+
+They are both from WCG for now. Need to continue to monitor and maybe reach out to them.
+
+
+### Age
+
+`Age` is a calculated field which counts the number of months between the client `DATEOFBIRTH` and the Common Assessment submit date (`estca.SUBMIT_DATE`), then divides by 12 to get the number of years, and is rounded down to the nearest whole year. But date of birth is not included in the final dataset.
+
+Every EAP should have a corresponding age.
+
+```{r}
+
+eaps %>%
+  count(is.na(age))
+
+eaps %>%
+  filter(is.na(age)) %>% view()
+
+```
+
+Looks like there is 1 EAP with no age. Case reference #7290419. Looking at the front end, it seems like none of the client's CA data appears in the CA summary page. Interestingly, in the person page for the client associated with this EAP, there is a date of birth.
+
+
+### Years in Canada
+
+Similarly to `age`, `years_in_canada` is calculated by counting the number of months between the client `datearrivedincanada` and the Common Assessment submit date (`estca.SUBMIT_DATE`), then divides by 12 to get the number of years, and is rounded down to the nearest whole year. The date arrived in Canada is included in the final dataset.
+
+Every EAP with a `datearrivedincanada` should have a corresponding `years_in_canada` value.
+
+```{r}
+
+eaps %>%
+  filter(!is.na(datearrivedincanada)) %>%
+  count(is.na(years_in_canada))
+
+eaps %>%
+  filter(!is.na(datearrivedincanada),
+         is.na(years_in_canada)) %>%
+  view()
+
+```
+
+The EAP with the missing age is also the one with a missing years in Canada value.
+
+
+### Inclusion Groups
+
+#### ODSP and PWD
+
+Most inclussion groups are not mutually exclusive, meaning that the same client can be part of more than one inclusion group. The only exception is with the Ontario Disability Support Program (ODSP) recipient (`odsp_ind`) and Person with a Disability (PWD) (`dis_ind`) inclusion groups. Clients who are considered to be part of the ODSP inclusion group cannot also be in the PWD inclusion group.
+
+```{r}
+
+eaps %>%
+  count(odsp_ind, dis_ind)
+
+```
+
+Good, there is no overlap between these groups.
+
+
+#### Youth with higher support needs
+
+Youth with higher support needs are defined in IES as being aged 15 to 29 and segmented into stream C. Let's see if both criteria are true.
+
+```{r}
+
+eaps %>%
+  count(youth_higher_ind, age < 30)
+
+eaps %>%
+  count(youth_higher_ind, stream)
+
+```
+
+Good, all youth with support needs align with the criteria in the definition.
+
+
+#### Indigenous
+
+Indigenous clients are defined in IES as identifying with one or more of the following: First Nations, Inuit or Metis. Let's see if the criteria aligns.
+
+```{r}
+
+eaps %>%
+  count(indigenous_ind, aborigfirstnations, aborigmetis, aboriginuit)
+
+```
+
+Yes, it does.
+
+```{r}
+
+eaps %>%
+  filter(!is.na(enddate)) %>%
+  count(closure_reason) %>%
+  mutate(pct = n/sum(n)) %>%
+  ggplot(aes(reorder(closure_reason,-pct),pct))+
+  geom_col()+
+  theme(axis.text.x = element_text(angle=90, hjust=1))
+
+eaps %>%
+  filter(!is.na(enddate)) %>%
+  count(est_catchment_area) %>%
+  mutate(pct = n/sum(n)) %>%
+  arrange(desc(pct))
+
+eaps %>%
+  count(exitflag)
+
+eaps %>%
+  count(newcomer_ind,dis_ind,youth_higher_ind,francophoneind,odsp_ind,indigenous_ind) %>%
+  filter(n!=11486) %>%
+  arrange(desc(n)) 
+
+
+
+```
+
+
+
+
+
