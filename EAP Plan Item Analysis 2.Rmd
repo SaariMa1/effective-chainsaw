@@ -1,0 +1,163 @@
+---
+  title: "Build EAP Plan Item Analysis Data"
+author: "Analytics Unit"
+date: "`r format(Sys.Date(), '%B %Y')`"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+  
+  ```{r setup, cache=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+
+# Load libraries
+
+require(odbc)
+require(tidyverse)
+require(dbplyr)
+require(here)
+require(rstudioapi)
+require(janitor)
+require(lubridate)
+require(writexl)
+
+
+## pull data
+
+raw_plans <- read_rds("O:/Analytics Unit/Projects/EST/Employment Action Plan/data/raw_plans.rds")
+
+
+# Check the referral program field to see how many times CORP comes up
+
+raw_plans %>%
+  count(REFERRED_PROGRAM)
+
+
+# Data wrangling:
+# Clean column headers and date fields
+# Create start and end week aggregations
+# Create a TRUE/FALSE flag to identify custom basic plan items
+
+plans <- raw_plans %>%
+  clean_names() %>%
+  mutate_if(is.POSIXct, as_date) %>%
+  mutate(
+    referred_program = case_when(is.na(referred_program) ~ "MLTSD",
+                                 TRUE ~ referred_program),
+    plan_start_week = floor_date(actualstartdate, "1 week"),
+    plan_end_week = floor_date(actualenddate, "1 week"),
+    plan_duration = (actualenddate - actualstartdate) + 1,
+    custom_plan = case_when(plan_item_name == "Custom Basic Plan Item" ~ TRUE,
+                            TRUE ~ FALSE))
+
+# Export at the plan item level
+
+saveRDS(plans, here("data/EAP_plan_items.rds"))
+
+```
+
+
+Create a dataset for export that aggregates plan item data to the EAP level.
+
+* plan_num: total number of plan items
+* plan_total_cost: total cost of all plan items
+* plan_total_duration: total duration of all plan items combined
+* sub_...: number of plan items associated with each sub-goal
+
+```{r}
+
+# Make a temporary dataset of the number of plans per sub-goal for each EAP
+
+temp_subgoals <- plans %>%
+  count(casereference, sub_goal) %>%
+  pivot_wider(names_from = "sub_goal",
+              values_from = "n") %>%
+  rename(sub_EAS = `Employment Assistance Services`,
+         sub_JFS = `Jobseeker Financial Supports`,
+         sub_RET = Retention,
+         sub_SDM = `Skills Development - Ministry Delivered Programs`,
+         sub_SDO = `Skills Development - Other`,
+         sub_SPS = `Specialized Services`,
+         sub_LST = `Life Stabilization`,
+         sub_EFS = `Employer Financial Supports`)
+
+
+# Make EAP-level dataset of plan item data for each EAP:
+
+EAP_plans_export <- plans %>%
+  group_by(casereference) %>%
+  summarise(plan_num = n(),
+            plan_total_cost = sum(actualcost),
+            plan_total_duration = sum(plan_duration)) %>%
+  left_join(temp_subgoals, by = "casereference")
+
+
+# Export
+
+saveRDS(EAP_plans_export, here("data/EAP_plans.rds"))
+
+```
+
+
+
+
+
+####### my analysis
+
+plans %>%
+  filter(!is.na(plan_item_name)) %>%
+  group_by(plan_item_name) %>%
+  summarize(cnt = n()) %>%
+  mutate(pct = cnt/sum(cnt)) %>%
+  arrange(desc(pct))
+
+
+
+
+
+
+plans %>%
+  count(plan_item_name) %>%
+  adorn_totals %>%
+  arrange(desc(n))
+```{r}
+
+####examine plan item costs by stream
+
+test <- merge(plans, select(eaps,c("casereference","stream")), by = "casereference")
+
+
+
+
+test %>%
+            filter(actualcost>0) %>%
+  group_by(sub_goal,plan_item_name,stream) %>%
+  summarize(total_cost = sum(actualcost)) %>%
+  ggplot(aes(reorder(plan_item_name,-total_cost),total_cost))+geom_col()+
+  theme(axis.text.x = element_text(angle=90, hjust=1))+facet_wrap(~stream)
+
+
+
+test %>%
+  filter(actualcost>0) %>%
+  filter(actualcost<20000) %>%
+  group_by(stream,sub_goal) %>%
+  summarize(total_cost = sum(actualcost)) %>%
+  mutate(pct = total_cost/sum(total_cost)) %>%
+  ggplot(aes(reorder(stream,-pct),pct,fill=sub_goal))+geom_bar(position = "stack",stat="identity")
+  
+ 
+  
+  
+
+
+
+```
+  
+  
+  
+  
+  
+  

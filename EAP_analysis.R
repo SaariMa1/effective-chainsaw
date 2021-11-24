@@ -165,6 +165,13 @@ test %>%
   coord_flip()+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
+test2 %>%
+  ggplot(aes(noc_2016_1_digit_desc,pct,fill=gender))+
+  geom_col()+
+  facet_wrap(~age_group)+
+  coord_flip()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
 
 ###employment goal outcome by age group
 
@@ -179,23 +186,149 @@ test2 <- eaps %>%
                                age>=45 & age<=54 ~ "45-54",
                                age>=55 & age<=64 ~ "55-64",
                                age>=65 ~ "65 and Over")) %>%
-  count(employment_goal_noc_1, age_group, gender) %>%
+  count(employment_goal_noc_1, age_group, gender, employment_goal_hours, employment_goal_wage) %>%
   group_by(employment_goal_noc_1) %>%
   mutate(pct = n / sum(n)) %>%
   left_join(NOC_ref_1, by = c("employment_goal_noc_1" = "noc_2016_1_digit"))
 
 
 test2 %>%
-  ggplot(aes(noc_2016_1_digit_desc,pct,fill=gender))+
-  geom_col()+
-  facet_wrap(~age_group)+
-  coord_flip()+
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  filter(!is.na(employment_goal_hours)) %>%
+  filter(employment_goal_hours<168 & employment_goal_hours>0) %>%
+  group_by(age_group) %>%
+  summarize(avg_hours = mean(employment_goal_hours)) %>%
+  ggplot(aes(age_group,avg_hours))+geom_col()
+
+test2 %>%
+  filter(!is.na(employment_goal_wage)) %>%
+  group_by(age_group) %>%
+  summarize(avg_wage = mean(employment_goal_wage)) %>%
+  ggplot(aes(age_group,avg_wage))+geom_col()
+
+eaps %>%
+  ggplot(aes(employment_goal_hours))+geom_histogram()
+
+
+####Differences in outcome working hours and working wage by Gender
+
+
+test3 <- eaps %>%
+  filter(!is.na(employment_goal_hours)) %>%
+  filter(employment_goal_hours<168 & employment_goal_hours>0) %>%
+  group_by(gender)
+
+
+test3 %>%
+  filter(!is.na(employment_goal_hours)) %>%
+  group_by(gender) %>%
+  summarize(avg_hours = mean(employment_goal_hours)) 
+
+eaps %>%
+  filter(!is.na(employment_goal_wage)) %>%
+  filter(employment_goal_wage<100 & employment_goal_wage>0) %>%
+  group_by(gender) %>%
+  summarize(avg_wage = mean(employment_goal_wage))
+
+## are these significant differences in hours?
+
+test3 %>%
+  group_by(gender) %>%
+  summarize(avg_hours = mean(employment_goal_hours))
+
+ test4 <- test3 %>%
+   group_by(gender) %>%
+   pivot_wider(names_from = gender,
+               values_from = employment_goal_hours)
+ 
+ var(test4$Male,na.rm = TRUE)
+ 
+ var(test4$Female,na.rm = TRUE)
+ 
+t.test(test4$Male,test4$Female, var.equal = F)
+ 
+ ## are these significant differences in wages?
+ 
+ test5 <- test3 %>%
+   group_by(gender) %>%
+   pivot_wider(names_from = gender,
+               values_from = employment_goal_wage)
+ 
+var(test5$Male,na.rm = TRUE)
+ 
+var(test5$Female,na.rm = TRUE)
+  
+t.test(test5$Male,test5$Female, var.equal = F)
 
 
 eaps %>%
-  ggplot(aes(age))+geom_histogram(bins = 30)
+  filter(!is.na(employment_goal_hours)) %>%
+  group_by(gender) %>%
+  summarize(avg_hours = mean(employment_goal_hours)) 
 
+
+
+eaps %>%
+  filter(!is.na(employment_goal_hours)) %>%
+  filter(employment_goal_hours<100 & employment_goal_hours>0) %>%
+  group_by(gender) %>%
+  summarize(mean_wage = mean(employment_goal_hours))
+
+
+
+########## number of plan items and their duration
+
+eaps %>%
+  ggplot(aes(plan_num))+geom_histogram()+scale_x_log10()
+
+
+eaps %>%
+  ggplot(aes(plan_total_cost))+geom_histogram()+scale_x_log10()
+
+
+eaps %>%
+  filter(!is.na(plan_total_duration)) %>%
+  ggplot(aes(as.integer(plan_total_duration)))+geom_histogram(bins = 30)+scale_x_log10()
+
+eaps %>%
+  filter(plan_total_duration==1) %>%
+  filter(!is.na(plan_total_duration)) %>%
+  group_by(casereference, sub_EAS,sub_JFS,sub_RET,sub_SDM,sub_SDO,sub_SPS,sub_LST,sub_EFS) %>%
+  count(plan_total_duration) %>%
+  arrange(desc(plan_total_duration))
+
+
+eaps %>%
+  filter(plan_total_duration==1) %>%
+  group_by(sub_EAS,sub_JFS,sub_RET,sub_SDM,sub_SDO,sub_SPS,sub_LST,sub_EFS) %>%
+  count() %>%
+  arrange(desc(n))
+
+eaps %>%
+  filter(!is.na(plan_total_duration)) %>%
+  group_by(plan_total_duration,sub_EAS,sub_JFS,sub_RET,sub_SDM,sub_SDO,sub_SPS,sub_LST,sub_EFS) %>%
+  count(plan_total_duration) %>%
+  arrange(desc(n)) %>%
+  pivot_longer(2:9,
+               names_to = "subgoal",
+               values_to = "count",values_drop_na = TRUE) %>%
+  group_by(subgoal) %>%
+  count() %>%
+  adorn_totals()
+
+
+
+eaps %>%
+  group_by(plan_total_duration,sub_EAS,sub_JFS,sub_RET,sub_SDM,sub_SDO,sub_SPS,sub_LST,sub_EFS) %>%
+  count()  %>%
+  pivot_longer(2:9,
+               names_to = "subgoal",
+               values_to = "count",values_drop_na = TRUE) %>%
+  group_by(subgoal) %>%
+  summarize(cnt = n()) %>%
+  mutate(pct = cnt/sum(cnt)) %>%
+  ggplot(aes(reorder(subgoal,-pct),pct,fill=subgoal))+geom_col()
+
+  
 
 
 
