@@ -328,6 +328,80 @@ eaps %>%
   mutate(pct = cnt/sum(cnt)) %>%
   ggplot(aes(reorder(subgoal,-pct),pct,fill=subgoal))+geom_col()
 
+
+
+####Distribution of Total Plan Item Cost by Stream####
+
+eaps %>%
+  count(plan_total_cost)
+
+eaps %>%
+  filter(!is.na(plan_total_cost)) %>%
+  filter(plan_total_cost>0) %>%
+  group_by(stream, plan_total_cost) %>%
+  count() %>%
+  ggplot(aes(n,plan_total_cost))+geom_boxplot()+facet_wrap(~stream)+scale_y_log10()
+
+
+eaps %>%
+  filter(!is.na(plan_total_cost),
+         !is.na(stream),
+         plan_total_cost < quantile(plan_total_cost,  0.99, na.rm = TRUE)) %>%
+  group_by(stream) %>%
+  ggplot(aes(plan_total_cost,fill=stream))+
+  geom_histogram(bins = 30)+
+  scale_x_log10()+
+  theme_minimal() +
+  facet_wrap(~stream)+
+  labs(title = "Distribution of Total Plan Item Cost by Stream",
+       x = "Plan Item Cost",
+       y = "Count",
+       caption = "Analytics Unit | FASSB")
+
+
+#percentage of total pan cost by stream
+
+eaps %>%
+  filter(!is.na(stream)) %>%
+  filter(!is.na(plan_total_cost)) %>%
+  group_by(stream) %>%
+  summarize(total = sum(plan_total_cost)) %>%
+  mutate(pct = total/sum(total))
+
+
+
+
+# Relationship between Score and total cost
+
+eaps %>%
+  filter(!is.na(plan_total_cost),
+         !is.na(stream),
+         plan_total_cost>0,
+         plan_total_cost < quantile(plan_total_cost,  0.99, na.rm = TRUE)) %>%
+  group_by(score,plan_total_cost,stream) %>%
+  summarize(total_cost = sum(plan_total_cost)) %>%
+  ggplot(aes(total_cost,score))+geom_point() +
+  geom_smooth(method = "lm")
+
+
+# cost by plan items
+
+eaps %>%
+  group_by(plan_total_cost,sub_EAS,sub_JFS,sub_RET,sub_SDM,sub_SDO,sub_SPS,sub_LST,sub_EFS) %>%
+  count()  %>%
+  pivot_longer(2:9,
+               names_to = "subgoal",
+               values_to = "count",values_drop_na = TRUE) %>%
+  group_by(subgoal) %>%
+  summarize(cnt = n()) %>%
+  ggplot(aes(reorder(subgoal,-cnt),cnt,fill=subgoal))+geom_col()
+
+
+
+
+
+
+
   
 
 
